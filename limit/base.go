@@ -42,7 +42,7 @@ func (*baseLimit) OnSample(context.Context, time.Time, time.Duration, int, bool)
 	panic("baseLimit.OnSample must be overrided")
 }
 
-func (b *baseLimit) NotityChange(listener func(int)) {
+func (b *baseLimit) NotifyChange(listener func(int)) {
 	b.Lock()
 	defer b.Unlock()
 

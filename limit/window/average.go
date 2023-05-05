@@ -2,9 +2,15 @@ package window
 
 import (
 	"time"
-
-	"github.com/xtracker/limits/util"
 )
+
+func NewAverageSampleWindow() SampleWindow {
+	return &AverageSampleWindow{
+		base: base{
+			minRtt: time.Hour,
+		},
+	}
+}
 
 type AverageSampleWindow struct {
 	base
@@ -12,14 +18,11 @@ type AverageSampleWindow struct {
 }
 
 func (a *AverageSampleWindow) AddSample(rtt time.Duration, inflight int, dropped bool) {
-	if dropped {
-		a.dropped++
-	} else {
+	a.base.AddSample(rtt, inflight, dropped)
+
+	if !dropped {
 		a.sumRtt += rtt
 	}
-
-	a.sampleCount++
-	a.maxInFlight = util.Max(a.maxInFlight, inflight)
 }
 
 func (a *AverageSampleWindow) GetTrackedRttNanos() time.Duration {
@@ -28,4 +31,8 @@ func (a *AverageSampleWindow) GetTrackedRttNanos() time.Duration {
 	}
 
 	return a.sumRtt / time.Duration(a.sampleCount-a.dropped)
+}
+
+func (a *AverageSampleWindow) SnapShot() SampleWindow {
+	return a
 }

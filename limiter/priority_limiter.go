@@ -11,11 +11,12 @@ import (
 	"github.com/xtracker/limits/util"
 )
 
+var _ limits.Limiter = (*priorityLimiter)(nil)
+
 var (
-	_                  limits.Limiter = (*priorityLimiter)(nil)
-	errBacklogOverload                = errors.New("backlog overload")
-	errEvicted                        = errors.New("evicted by higher priority")
-	errTimeout                        = errors.New("wait timeout")
+	errBacklogOverload = errors.New("backlog overload")
+	errEvicted         = errors.New("evicted by higher priority")
+	errTimeout         = errors.New("wait timeout")
 )
 
 type eventData struct {
@@ -76,26 +77,46 @@ func WithPriority(ctx context.Context, priority int) context.Context {
 }
 
 type priorityLimiterBuilder struct {
-	id string
+	id          string
+	delegate    limits.Limiter
+	backlogSize int
+	timeout     time.Duration
 }
 
-func NewPriorityLimiter(delegate limits.Limiter) limits.Limiter {
-	return &priorityLimiter{
-		Limiter:     delegate,
+func NewPriorityLimiterBuilder(delegate limits.Limiter) *priorityLimiterBuilder {
+	return &priorityLimiterBuilder{
 		id:          "",
 		backlogSize: 64,
 		timeout:     time.Second,
-		backlog:     util.NewPriorityDeque[*event](64),
+		delegate:    delegate,
+	}
+}
+
+func (pb *priorityLimiterBuilder) BacklogSize(sz int) *priorityLimiterBuilder {
+	pb.backlogSize = sz
+	return pb
+}
+
+func (pb *priorityLimiterBuilder) Timeout(timeout time.Duration) *priorityLimiterBuilder {
+	pb.timeout = timeout
+	return pb
+}
+
+func (pb *priorityLimiterBuilder) Build() limits.Limiter {
+	return &priorityLimiter{
+		Limiter: pb.delegate,
+		id:      pb.id,
+		timeout: pb.timeout,
+		backlog: util.NewPriorityDeque[*event](pb.backlogSize),
 	}
 }
 
 type priorityLimiter struct {
 	limits.Limiter
 	sync.Mutex
-	id          string
-	backlogSize int
-	timeout     time.Duration
-	backlog     util.Deque[*event]
+	id      string
+	timeout time.Duration
+	backlog util.Deque[*event]
 }
 
 func (p *priorityLimiter) Acquire(ctx context.Context) (limits.Listener, error) {

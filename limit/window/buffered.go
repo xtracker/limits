@@ -1,6 +1,7 @@
 package window
 
 import (
+	"runtime"
 	"sync/atomic"
 	"time"
 	_ "unsafe"
@@ -111,6 +112,13 @@ type DataPoints struct {
 	ring
 }
 
+func NewBufferedSampleWindow(delegate SampleWindow) SampleWindow {
+	return &bufferedSampleWindow{
+		SampleWindow: delegate,
+		dps:          make([]*DataPoints, runtime.GOMAXPROCS(0)),
+	}
+}
+
 type bufferedSampleWindow struct {
 	SampleWindow // stratrgy
 	dps          []*DataPoints
@@ -119,7 +127,11 @@ type bufferedSampleWindow struct {
 func (bsw *bufferedSampleWindow) AddSample(rtt time.Duration, inflight int, dropped bool) {
 	id := procPin()
 	defer procUnPin()
-	bsw.dps[id].offer(makeDataPoint(rtt, inflight, dropped))
+
+	// protect if GOMAXPROCS were modified at runtime
+	if id < len(bsw.dps) {
+		bsw.dps[id].offer(makeDataPoint(rtt, inflight, dropped))
+	}
 }
 
 func (bsw *bufferedSampleWindow) SnapShot() SampleWindow {
@@ -144,15 +156,15 @@ func (bsw *bufferedSampleWindow) flushSlot(dps *DataPoints) {
 }
 
 func (bsw *bufferedSampleWindow) GetCandidateRttNanos() time.Duration {
-	return 0
+	return bsw.SampleWindow.GetCandidateRttNanos()
 }
 
 func (bsw *bufferedSampleWindow) GetTrackedRttNanos() time.Duration {
-	return 0
+	return bsw.GetTrackedRttNanos()
 }
 
 func (bsw *bufferedSampleWindow) GetMaxInFlight() int {
-	return 0
+	return bsw.SampleWindow.GetMaxInFlight()
 }
 
 func (bsw *bufferedSampleWindow) GetSampleCount() (int, int) {
@@ -165,16 +177,14 @@ func (bsw *bufferedSampleWindow) GetSampleCount() (int, int) {
 }
 
 func (bsw *bufferedSampleWindow) DidDrop() bool {
-	bsw.flush()
 	return bsw.SampleWindow.DidDrop()
 }
 
 func (bsw *bufferedSampleWindow) Reset() {
-	bsw.SampleWindow.Reset()
 }
 
-//go:linkname ProcPin runtime.procPin
+//go:linkname procPin runtime.procPin
 func procPin() int
 
-//go:linkname ProcUnPin runtime.procUnpin
+//go:linkname procUnPin runtime.procUnpin
 func procUnPin()

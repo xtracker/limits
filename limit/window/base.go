@@ -1,6 +1,10 @@
 package window
 
-import "time"
+import (
+	"time"
+
+	"github.com/xtracker/limits/util"
+)
 
 type base struct {
 	minRtt      time.Duration
@@ -8,6 +12,16 @@ type base struct {
 	sampleCount int
 	dropped     int
 	rate        int
+}
+
+func (w *base) AddSample(rtt time.Duration, inflight int, dropped bool) {
+	if !dropped {
+		w.minRtt = util.Min(rtt, w.minRtt)
+	} else {
+		w.dropped++
+	}
+
+	w.sampleCount++
 }
 
 func (w *base) DidDrop() bool {
@@ -26,8 +40,8 @@ func (w *base) GetSampleCount() (int, int) {
 	return w.sampleCount, w.dropped
 }
 
-func (w *base) ResetWin() {
-	w.minRtt = 0
+func (w *base) Reset() {
+	w.minRtt = time.Hour
 	w.maxInFlight = 0
 	w.sampleCount = 0
 	w.dropped = 0

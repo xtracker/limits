@@ -5,11 +5,63 @@ import (
 	"math"
 	"time"
 
+	"github.com/xtracker/limits"
 	"github.com/xtracker/limits/limit/measurement"
 )
 
-func NewGradient2Limit() *Gradient2Limit {
-	return &Gradient2Limit{}
+type gradientBuilder struct {
+	initial, min, max float64
+	longWindow        int
+	smooth            float64
+	tolerance         float64
+	queueSize         func(int) float64
+}
+
+func NewGradientBuilder() *gradientBuilder {
+	return &gradientBuilder{
+		initial:    20,
+		min:        1,
+		max:        200,
+		longWindow: 600,
+		smooth:     0.2,
+		tolerance:  1.5,
+		queueSize: func(current int) float64 {
+			switch {
+			case current <= 2:
+				return 0.5
+			case current < 10:
+				return 1
+			case current < 20:
+				return 2
+			default:
+				return 4
+			}
+		},
+	}
+}
+
+func (g *gradientBuilder) Initial(initial float64) *gradientBuilder {
+	g.initial = initial
+	return g
+}
+
+func (g *gradientBuilder) MinMax(min, max float64) *gradientBuilder {
+	g.min, g.max = min, max
+	return g
+}
+
+func (g *gradientBuilder) Build() limits.Limit {
+	return &Gradient2Limit{
+		baseLimit:      baseLimit{},
+		initLimit:      g.initial,
+		minLimit:       g.min,
+		maxLimit:       g.max,
+		estimatedLimit: g.initial,
+		queueSize:      g.queueSize,
+		smoothing:      g.smooth,
+		tolerance:      g.tolerance,
+		longRtt:        measurement.NewAverageMeasurement(g.longWindow, 10),
+	}
 }
 
 type Gradient2Limit struct {
@@ -44,7 +96,7 @@ type Gradient2Limit struct {
 	tolerance float64
 }
 
-func (gl *Gradient2Limit) OnSample(ctx context.Context, startTime time.Time, rtt, sumRtt time.Duration, inflight int, sample int, didDrop bool) {
+func (gl *Gradient2Limit) OnSample(ctx context.Context, startTime time.Time, rtt time.Duration, inflight int, didDrop bool) {
 	defer gl.setLimit(int(gl.estimatedLimit))
 	queueSize := gl.queueSize(int(gl.estimatedLimit))
 	appLimited := inflight < int(gl.estimatedLimit/2.0)

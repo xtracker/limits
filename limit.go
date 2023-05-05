@@ -8,6 +8,6 @@ import (
 type Limit interface {
 	GetLimit() int
 	OnSample(ctx context.Context, startTime time.Time, rtt time.Duration, inflight int, dropped bool)
-	NotityChange(func(int))
+	NotifyChange(func(int))
 	String() string
 }
